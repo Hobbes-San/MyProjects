@@ -1,5 +1,5 @@
-Fablix is the primary Tomcat Java/mySQL web application as described in the Projects section.
+Fablix is a Tomcat database web application written in Java/mySQL which allows customers to search and browse for movies by a variety of categories, add desired movies to the cart, and check out using their credit card information. It also allows employees to manually enter movies and stars into the database.
 
-Please go to http://52.37.235.2/Fablix/servlet/Home to check out the Fablix app.
+Attached as part of the project are XML files containing 61000+ data entries and Java files to parse the data into the mySQL database.
 
-FavorFlix_main is the "main" part of the secondary Android application which supports a subset of features found in the Fablix web application.
+It also contains a secondary project FavorFlix, which is an Android application supporting a subset of features in the primary Fablix project.
