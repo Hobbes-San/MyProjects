@@ -9,32 +9,22 @@ from Environment import Environment
 from Experience import Experience
 
 class ProcessAgent(Process):
-    def __init__(self, id, training_q, episode_log_q):
+    def __init__(self, id, training_q, prediction_q, episode_log_q):
         super(ProcessAgent, self).__init__()
 
         self.id = id
         
         self.training_q = training_q
+        self.prediction_q = prediction_q
         self.episode_log_q = episode_log_q
 
         self.env = Environment()
         self.num_actions = self.env.get_num_actions()
         self.actions = np.arange(self.num_actions)
-
-        self.discount_factor = Config.DISCOUNT
+        
         # one frame at a time
         self.wait_q = Queue(maxsize=1)
-        self.Q_value_wait_q = Queue(maxsize=1)
         self.exit_flag = Value('i', 0)
-        
-    def convert_data(self, experiences):
-        prevs = np.array([exp.prev_state for exp in experiences])
-        actions = np.eye(self.num_actions)[np.array([exp.action for exp in experiences])].astype(np.float32)
-        rewards = np.array([exp.reward for exp in experiences])
-        curs = np.array([exp.cur_state for exp in experiences])
-        dones = np.array([exp.done for exp in experiences])
-        
-        return prevs, actions, rewards, curs, dones
 
     def predict(self, state):
         # put the state in the prediction q
@@ -42,9 +32,6 @@ class ProcessAgent(Process):
         # wait for the prediction to come back
         p, v = self.wait_q.get()
         return p, v
-    
-    def predict_Q(self, state, action):
-        self.
 
     def select_action(self, prediction):
         if Config.PLAY_MODE:
@@ -76,8 +63,7 @@ class ProcessAgent(Process):
 
             if done or time_count == Config.TIME_MAX:
                 terminal_reward = 0 if done else value
-                prevs, actions, rewards, curs, dones = self.convert_data(experiences)
-                yield prevs, actions, rewards, curs, dones, terminal_reward, reward_sum
+                yield experiences, terminal_reward, reward_sum
 
                 # reset the tmax count
                 time_count = 0
@@ -95,8 +81,8 @@ class ProcessAgent(Process):
         while self.exit_flag.value == 0:
             total_reward = 0
             total_length = 0
-            for curs, actions, rewards, nexts, dones, terminal_reward, reward_sum in self.run_episode():
+            for experiences, terminal_reward, reward_sum in self.run_episode():
                 total_reward += reward_sum
-                total_length += len(rewards) + 1  # +1 for last frame that we drop
-                self.training_q.put((curs, actions, rewards, nexts, dones, terminal_reward))
+                total_length += len(experiences) + 1  # +1 for last frame that we drop
+                self.training_q.put((experiences, terminal_reward))
             self.episode_log_q.put((datetime.now(), total_reward, total_length))
