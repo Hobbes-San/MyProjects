@@ -1,10 +1,9 @@
 from threading import Thread
 from Experience import Experience
 import numpy as np
+from multiprocessing import Queue
 
 from Config import Config
-
-global_step = 0
 
 class ThreadTrainer(Thread):
     def __init__(self, server, id):
@@ -13,43 +12,63 @@ class ThreadTrainer(Thread):
 
         self.id = id
         self.server = server
+        self.v_wait_q = Queue(maxsize=1)
+        self.Q_value_wait_q = Queue(maxsize=1)
         self.exit_flag = False
     
     @staticmethod
-    def PG_accumulate_rewards(prevs, actions, rewards, curs, dones, terminal_reward, discount_factor):
+    def PG_accumulate_rewards(rewards, terminal_reward):
         reward_sum = terminal_reward; returns = []
         for t in reversed(range(0, len(rewards)-1)):
             r = np.clip(rewards[t], Config.REWARD_MIN, Config.REWARD_MAX)
-            reward_sum = discount_factor * reward_sum + r
+            reward_sum = Config.DISCOUNT * reward_sum + r
             returns.append(reward_sum)
         returns.reverse()
-        return returns[:-1]
+        return returns
+    
+    def convert_data(self, experiences):
+        prevs = np.array([exp.prev_state for exp in experiences])
+        actions = np.eye(self.server.model.num_actions)[np.array([exp.action for exp in experiences])].astype(np.float32)
+        rewards = np.array([exp.reward for exp in experiences])
+        curs = np.array([exp.cur_state for exp in experiences])
+        dones = np.array([exp.done for exp in experiences])
+        
+        return prevs, actions, rewards, curs, dones
 
     def run(self):
-        if self.server.global_step % 10 == 0:
-            PG = True
-        else:
+        s = self.server.training_step
+        if s > 0 and s % 20 == 0:
             PG = False
+        else:
+            PG = True
         while not self.exit_flag:
-            batch_size = 0
-            if PG:
-                while batch_size <= Config.TRAINING_MIN_BATCH_SIZE:
-                    prevs, actions, rewards, curs, dones, terminal_reward = self.server.training_q.get()
-                    returns = ThreadTrainer.PG_accumulate_rewards(prevs, actions, rewards, curs, dones,
-                                terminal_reward, Config.DISCOUNT)
-                    if batch_size == 0:
-                        x__ = prevs; r__ = returns; a__ = actions
-                    else:
-                        x__ = np.concatenate((x__, prevs))
-                        r__ = np.concatenate((r__, returns))
-                        a__ = np.concatenate((a__, actions))
-                    batch_size += prevs.shape[0]
-            else:
-                prevs, actions, rewards, curs, dones = self.server.training_q.sample_batch()
-                prev_Q = self.server.model.predict_Q(prevs, actions)
-                cur_Q = np.max(self.server.model.predict(curs), axis=1)
-                advantages = [r + self.gamma*cur_q - prev_q if done is False else r for r, prev_q,
-                              cur_q, done in zip(rewards, prev_Q, cur_Q, dones)]            
-                x__ = prevs; r__ = advantages; a__ = actions
             if Config.TRAIN_MODELS:
-                self.server.train_model(x__, r__, a__, self.id)
+                if PG:
+                    batch_size = 0
+                    while batch_size <= Config.PG_TRAINING_MIN_BATCH_SIZE:
+                        experiences, terminal_reward = self.server.training_q.get()
+                        prevs, actions, rewards, _, _ = self.convert_data(experiences)
+                        returns = ThreadTrainer.PG_accumulate_rewards(rewards, terminal_reward)
+                        if batch_size == 0:
+                            x__ = prevs[:-1]; r__ = returns; a__ = actions[:-1]
+                        else:
+                            x__ = np.concatenate((x__, prevs[:-1]))
+                            r__ = np.concatenate((r__, returns))
+                            a__ = np.concatenate((a__, actions[:-1]))
+                        batch_size += len(returns)
+                    self.server.v_prediction_q.put((self.id, x__))
+                    baselines = self.v_wait_q.get()
+                    r__ = r__ - baselines
+                    self.server.train_model(x__, r__, a__, self.id)
+                else:
+                    experiences = self.server.training_q.sample_batch()
+                    if experiences is not None:
+                        prevs, actions, rewards, curs, dones = self.convert_data(experiences)
+                        self.server.Q_value_prediction_q.put((self.id, prevs))
+                        prev_Q = np.sum(self.server.Q_value_wait_q.get() * actions, axis=1)
+                        self.server.Q_value_prediction_q.put((self.id, curs))
+                        cur_Q = np.max(self.Q_value_wait_q.get(), axis=1)
+                        advantages = np.zeros(cur_Q.shape[0])
+                        for i in range(cur_Q.shape[0]):
+                            advantages[i] = rewards[i] + Config.DISCOUNT*cur_Q[i] - prev_Q[i] if dones[i] is False else rewards[i]         
+                        self.server.train_model(prevs, advantages, actions, self.id)
