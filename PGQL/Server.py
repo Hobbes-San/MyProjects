@@ -10,14 +10,26 @@ from ProcessStats import ProcessStats
 from ThreadDynamicAdjustment import ThreadDynamicAdjustment
 from ThreadPredictor import ThreadPredictor
 from ThreadTrainer import ThreadTrainer
+from Buffer import Buffer
 
 class Server:
     def __init__(self):
         self.stats = ProcessStats()
-        
-        self.global_step = 0
 
-        self.training_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
+        self.training_q = Buffer(minsize=Config.MIN_BUFFER_SIZE, maxsize=Config.MAX_BUFFER_SIZE,
+                                 DQ_batch_size=Config.DQ_BATCH_SIZE)
+        
+        # The queue below is for action probability and value predictions that will be
+        # used for the agents to play the game and record the experiences.
+        self.prediction_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
+        
+        # The queue below is for the value predictions that will be used as the baseline
+        # for the PG update step.
+        self.v_prediction_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
+        
+        # The queue below is for the Q-value predictions that will be used as the baseline
+        # for the DQ update step.
+        self.Q_value_prediction_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
 
         self.model = NetworkVP(Config.DEVICE, Config.NETWORK_NAME, Environment().get_num_actions())
         if Config.LOAD_CHECKPOINT:
@@ -33,7 +45,7 @@ class Server:
 
     def add_agent(self):
         self.agents.append(
-            ProcessAgent(len(self.agents), self.prediction_q, self.training_q,
+            ProcessAgent(len(self.agents), self.training_q, self.prediction_q,
                          self.stats.episode_log_q))
         self.agents[-1].start()
 
@@ -61,7 +73,6 @@ class Server:
         self.trainers.pop()
 
     def train_model(self, x_, r_, a_, trainer_id):
-        self.global_step += 1
         self.model.train(x_, r_, a_, trainer_id)
         self.training_step += 1
         self.frame_counter += x_.shape[0]
@@ -83,8 +94,7 @@ class Server:
             for trainer in self.trainers:
                 trainer.enabled = False
 
-        learning_rate_multiplier = (
-                                       Config.LEARNING_RATE_END - Config.LEARNING_RATE_START) / Config.ANNEALING_EPISODE_COUNT
+        learning_rate_multiplier = (Config.LEARNING_RATE_END - Config.LEARNING_RATE_START) / Config.ANNEALING_EPISODE_COUNT
         beta_multiplier = (Config.BETA_END - Config.BETA_START) / Config.ANNEALING_EPISODE_COUNT
 
         while self.stats.episode_count.value < Config.EPISODES:
