@@ -4,7 +4,7 @@ class Config:
     # Game configuration
 
     # Name of the game, with version (e.g. PongDeterministic-v0)
-    ATARI_GAME = 'PongDeterministic-v0'
+    ATARI_GAME = 'Pong-v0'
 
     # Enable to see the trained agent in action
     PLAY_MODE = False
@@ -20,17 +20,17 @@ class Config:
     
     # If the dynamic configuration is on, these are the initial values.
     # Number of Agents
-    AGENTS = 32 
+    AGENTS = 32
     # Number of Predictors
     PREDICTORS = 2
     # Number of Trainers
-    TRAINERS = 2
+    TRAINERS = 4
 
     # Device
-    DEVICE = 'cuda'
+    DEVICE = 'gpu:0'
 
     # Enable the dynamic adjustment (+ waiting time to start it)
-    DYNAMIC_SETTINGS = True
+    DYNAMIC_SETTINGS = False
     DYNAMIC_SETTINGS_STEP_WAIT = 20
     DYNAMIC_SETTINGS_INITIAL_WAIT = 10
 
@@ -38,7 +38,7 @@ class Config:
     # Algorithm parameters
 
     # Discount factor
-    DISCOUNT = 0.99
+    DISCOUNT = 1
     
     # Tmax
     TIME_MAX = 5
@@ -48,9 +48,11 @@ class Config:
     REWARD_MAX = 1
 
     # Max size of the queue
-    MAX_PG_QUEUE_SIZE = 100
-    MIN_DQ_QUEUE_SIZE = 100
-    MAX_DQ_QUEUE_SIZE = 1000
+    MAX_BUFFER_SIZE = 10000
+    MIN_BUFFER_SIZE = 1000
+    MAX_QUEUE_SIZE = 100
+    DQ_BATCH_SIZE = 32
+    
     PREDICTION_BATCH_SIZE = 128
 
     # Input of the DNN
@@ -79,12 +81,12 @@ class Config:
     DUAL_RMSPROP = False
     
     # Gradient clipping
-    USE_GRAD_CLIP = False
+    USE_GRAD_CLIP = True
     GRAD_CLIP_NORM = 40.0 
     # Epsilon (regularize policy lag in GA3C)
     LOG_EPSILON = 1e-6
     # Training min batch size - increasing the batch size increases the stability of the algorithm, but make learning slower
-    TRAINING_MIN_BATCH_SIZE = 20
+    PG_TRAINING_MIN_BATCH_SIZE = 40
     
     #########################################################################
     # Log and save
@@ -95,12 +97,12 @@ class Config:
     TENSORBOARD_UPDATE_FREQUENCY = 1000
 
     # Enable to save models every SAVE_FREQUENCY episodes
-    SAVE_MODELS = True
+    SAVE_MODELS = False
     # Save every SAVE_FREQUENCY episodes
     SAVE_FREQUENCY = 1000
     
     # Print stats every PRINT_STATS_FREQUENCY episodes
-    PRINT_STATS_FREQUENCY = 1
+    PRINT_STATS_FREQUENCY = 100
     # The window to average stats
     STAT_ROLLING_MEAN_WINDOW = 1000
 
@@ -114,5 +116,3 @@ class Config:
     
     # Minimum policy
     MIN_POLICY = 0.0
-    # Use log_softmax() instead of log(softmax())
-    USE_LOG_SOFTMAX = False
