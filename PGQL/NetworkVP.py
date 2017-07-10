@@ -42,7 +42,6 @@ class NetworkVP:
         self.x = tf.placeholder(
             tf.float32, [None, self.img_height, self.img_width, self.img_channels], name='X')
         self.y_r = tf.placeholder(tf.float32, [None], name='Yr')
-        self.PG = tf.placeholder(tf.bool)
 
         self.var_beta = tf.placeholder(tf.float32, name='beta', shape=[])
         self.var_learning_rate = tf.placeholder(tf.float32, name='lr', shape=[])
@@ -61,35 +60,26 @@ class NetworkVP:
         self.flat = tf.reshape(_input, shape=[-1, nb_elements._value])
         self.d1 = self.dense_layer(self.flat, 256, 'dense1')
         
-        if self.PG:
-            advantages = self.y_r - tf.stop_gradient(self.logits_v)
-        else:
-            advantages = self.y_r
-        
         self.logits_v = tf.squeeze(self.dense_layer(self.d1, 1, 'logits_v', func=None), axis=[1])
-        self.cost_v = 0.5 * advantages * tf.reduce_sum(tf.square(self.y_r - self.logits_v), axis=0)
-
         self.logits_p = self.dense_layer(self.d1, self.num_actions, 'logits_p', func=None)
-        if Config.USE_LOG_SOFTMAX:
-            self.softmax_p = tf.nn.softmax(self.logits_p)
-            self.log_softmax_p = tf.nn.log_softmax(self.logits_p)
-            self.log_selected_action_prob = tf.reduce_sum(self.log_softmax_p * self.action_index, axis=1)
-            
-            self.cost_p_1 = self.log_selected_action_prob * advantages
-            self.cost_p_2 = -1 * self.var_beta * \
-                        tf.reduce_sum(self.log_softmax_p * self.softmax_p, axis=1)
-        else:
-            self.softmax_p = (tf.nn.softmax(self.logits_p) + Config.MIN_POLICY) / (1.0 + Config.MIN_POLICY * self.num_actions)
-            self.selected_action_prob = tf.reduce_sum(self.softmax_p * self.action_index, axis=1)
-            
-            self.cost_p_1 = tf.log(tf.maximum(self.selected_action_prob, self.log_epsilon)) \
-                        * advantages
-            self.cost_p_2 = -1 * self.var_beta * \
+        self.softmax_p = (tf.nn.softmax(self.logits_p) + Config.MIN_POLICY) / (1.0 + Config.MIN_POLICY * self.num_actions)
+        self.selected_action_prob = tf.reduce_sum(self.softmax_p * self.action_index, axis=1)
+        
+        # The entropy cost
+        self.cost_p_2 = self.cost_p_2 = -1 * self.var_beta * \
                         tf.reduce_sum(tf.log(tf.maximum(self.softmax_p, self.log_epsilon)) *
                                       self.softmax_p, axis=1)
-        
-        self.Q_values = self.var_beta * (tf.log(tf.maximum(self.selected_action_prob, self.log_epsilon))) + \
+                        
+        self.Q_values = self.var_beta * (tf.log(tf.maximum(self.softmax_p, self.log_epsilon))) + \
                         self.cost_p_2 + self.logits_v
+       
+        # The value cost
+        self.cost_v = -tf.reduce_sum(self.y_r*self.logits_v, axis=0)
+        
+        #The Policy Gradient cost
+        self.cost_p_1 = tf.log(tf.maximum(self.selected_action_prob, self.log_epsilon)) \
+                        * self.y_r
+        
         self.cost_p_1_agg = tf.reduce_sum(self.cost_p_1, axis=0)
         self.cost_p_2_agg = tf.reduce_sum(self.cost_p_2, axis=0)
         self.cost_p = -(self.cost_p_1_agg + self.cost_p_2_agg)
@@ -210,16 +200,16 @@ class NetworkVP:
         prediction = self.sess.run(self.softmax_p, feed_dict={self.x: x})
         return prediction
     
-    def predict_Q(self, x):
+    def predict_Q_value(self, x, actions):
         prediction = self.sess.run(self.Q_values, feed_dict={self.x: x})
         return prediction
     
     def predict_p_and_v(self, x):
         return self.sess.run([self.softmax_p, self.logits_v], feed_dict={self.x: x})
     
-    def train(self, x, y_r, a, PG, trainer_id):
+    def train(self, x, y_r, a, trainer_id):
         feed_dict = self.__get_base_feed_dict()
-        feed_dict.update({self.x: x, self.y_r: y_r, self.action_index: a, self.PG: PG})
+        feed_dict.update({self.x: x, self.y_r: y_r, self.action_index: a})
         self.sess.run(self.train_op, feed_dict=feed_dict)
 
     def log(self, x, y_r, a):
