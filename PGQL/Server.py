@@ -1,23 +1,23 @@
-from multiprocessing import Queue
+from multiprocessing import Queue, Value, Lock
+from multiprocessing.managers import SyncManager
 
 import time
+from collections import deque
 
 from Config import Config
 from Environment import Environment
 from NetworkVP import NetworkVP
 from ProcessAgent import ProcessAgent
 from ProcessStats import ProcessStats
-from ThreadDynamicAdjustment import ThreadDynamicAdjustment
 from ThreadPredictor import ThreadPredictor
-from ThreadTrainer import ThreadTrainer
-from Buffer import Buffer
+from ThreadPG_Trainer import ThreadPG_Trainer
+from ThreadDQ_Trainer import ThreadDQ_Trainer
 
 class Server:
     def __init__(self):
         self.stats = ProcessStats()
 
-        self.training_q = Buffer(minsize=Config.MIN_BUFFER_SIZE, maxsize=Config.MAX_BUFFER_SIZE,
-                                 DQ_batch_size=Config.DQ_BATCH_SIZE)
+        self.PG_training_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
         
         # The queue below is for action probability and value predictions that will be
         # used for the agents to play the game and record the experiences.
@@ -35,18 +35,18 @@ class Server:
         if Config.LOAD_CHECKPOINT:
             self.stats.episode_count.value = self.model.load()
 
-        self.training_step = 0
         self.frame_counter = 0
 
         self.agents = []
         self.predictors = []
-        self.trainers = []
-        self.dynamic_adjustment = ThreadDynamicAdjustment(self)
+        self.PG_trainers = []
+        self.DQ_trainers = []
 
-    def add_agent(self):
+    def add_agent(self, DQ_training_q, DQ_training_q_size, lock):
         self.agents.append(
-            ProcessAgent(len(self.agents), self.training_q, self.prediction_q,
-                         self.stats.episode_log_q))
+            ProcessAgent(len(self.agents), self.PG_training_q, DQ_training_q,
+                         DQ_training_q_size, self.prediction_q, self.stats.episode_log_q,
+                         lock))
         self.agents[-1].start()
 
     def remove_agent(self):
@@ -63,22 +63,30 @@ class Server:
         self.predictors[-1].join()
         self.predictors.pop()
 
-    def add_trainer(self):
-        self.trainers.append(ThreadTrainer(self, len(self.trainers)))
-        self.trainers[-1].start()
+    def add_PG_trainer(self):
+        self.PG_trainers.append(ThreadPG_Trainer(self, len(self.PG_trainers)))
+        self.PG_trainers[-1].start()
 
-    def remove_trainer(self):
-        self.trainers[-1].exit_flag = True
-        self.trainers[-1].join()
-        self.trainers.pop()
+    def remove_PG_trainer(self):
+        self.PG_trainers[-1].exit_flag = True
+        self.PG_trainers[-1].join()
+        self.PG_trainers.pop()
+        
+    def add_DQ_trainer(self, DQ_training_q, DQ_training_q_size):
+        self.DQ_trainers.append(ThreadDQ_Trainer(self, len(self.DQ_trainers), DQ_training_q,
+                                DQ_training_q_size))
+        self.DQ_trainers[-1].start()
+        
+    def remove_DQ_trainer(self):
+        self.DQ_trainers[-1].exit_flag = True
+        self.DQ_trainers[-1].join()
+        self.DQ_trainers.pop()
 
     def train_model(self, x_, r_, a_, trainer_id):
         self.model.train(x_, r_, a_, trainer_id)
-        self.training_step += 1
         self.frame_counter += x_.shape[0]
-
+        
         self.stats.training_count.value += 1
-        self.dynamic_adjustment.temporal_training_count += 1
 
         if Config.TENSORBOARD and self.stats.training_count.value % Config.TENSORBOARD_UPDATE_FREQUENCY == 0:
             self.model.log(x_, r_, a_)
@@ -88,10 +96,21 @@ class Server:
 
     def main(self):
         self.stats.start()
-        self.dynamic_adjustment.start()
+        SyncManager.register('deque', deque)
+        m = SyncManager(); m.start(); DQ_training_q = m.deque(maxlen=Config.MAX_BUFFER_SIZE)
+        lock = Lock(); DQ_training_q_size = Value('i', 0)
+        
+        for _ in range(Config.AGENTS):
+            self.add_agent(DQ_training_q, DQ_training_q_size, lock)
+        for _ in range(Config.PREDICTORS):
+            self.add_predictor()
+        for _ in range(Config.PG_TRAINERS):
+            self.add_PG_trainer()
+        for _ in range(Config.DQ_TRAINERS):
+            self.add_DQ_trainer(DQ_training_q, DQ_training_q_size)
 
         if Config.PLAY_MODE:
-            for trainer in self.trainers:
+            for trainer in self.PG_trainers + self.DQ_trainers:
                 trainer.enabled = False
 
         learning_rate_multiplier = (Config.LEARNING_RATE_END - Config.LEARNING_RATE_START) / Config.ANNEALING_EPISODE_COUNT
@@ -108,8 +127,8 @@ class Server:
                 self.stats.should_save_model.value = 0
 
             time.sleep(0.01)
-
-        self.dynamic_adjustment.exit_flag = True
+            
+        m.shutdown()
         while self.agents:
             self.remove_agent()
         while self.predictors:
