@@ -11,7 +11,7 @@ from ProcessAgent import ProcessAgent
 from ProcessStats import ProcessStats
 from ThreadPredictor import ThreadPredictor
 from ThreadPG_Trainer import ThreadPG_Trainer
-from ThreadDQ_Trainer import ThreadDQ_Trainer
+from ThreadQL_Trainer import ThreadQL_Trainer
 
 class Server:
     def __init__(self):
@@ -28,7 +28,7 @@ class Server:
         self.v_prediction_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
         
         # The queue below is for the Q-value predictions that will be used as the baseline
-        # for the DQ update step.
+        # for the QL update step.
         self.Q_value_prediction_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
 
         self.model = NetworkVP(Config.DEVICE, Config.NETWORK_NAME, Environment().get_num_actions())
@@ -40,12 +40,12 @@ class Server:
         self.agents = []
         self.predictors = []
         self.PG_trainers = []
-        self.DQ_trainers = []
+        self.QL_trainers = []
 
-    def add_agent(self, DQ_training_q, DQ_training_q_size, lock):
+    def add_agent(self, QL_training_q, QL_training_q_size, lock):
         self.agents.append(
-            ProcessAgent(len(self.agents), self.PG_training_q, DQ_training_q,
-                         DQ_training_q_size, self.prediction_q, self.stats.episode_log_q,
+            ProcessAgent(len(self.agents), self.PG_training_q, QL_training_q,
+                         QL_training_q_size, self.prediction_q, self.stats.episode_log_q,
                          lock))
         self.agents[-1].start()
 
@@ -72,15 +72,15 @@ class Server:
         self.PG_trainers[-1].join()
         self.PG_trainers.pop()
         
-    def add_DQ_trainer(self, DQ_training_q, DQ_training_q_size):
-        self.DQ_trainers.append(ThreadDQ_Trainer(self, len(self.DQ_trainers), DQ_training_q,
-                                DQ_training_q_size))
-        self.DQ_trainers[-1].start()
+    def add_QL_trainer(self, QL_training_q, QL_training_q_size):
+        self.QL_trainers.append(ThreadQL_Trainer(self, len(self.QL_trainers), QL_training_q,
+                                QL_training_q_size))
+        self.QL_trainers[-1].start()
         
-    def remove_DQ_trainer(self):
-        self.DQ_trainers[-1].exit_flag = True
-        self.DQ_trainers[-1].join()
-        self.DQ_trainers.pop()
+    def remove_QL_trainer(self):
+        self.QL_trainers[-1].exit_flag = True
+        self.QL_trainers[-1].join()
+        self.QL_trainers.pop()
 
     def train_model(self, x_, r_, a_, trainer_id):
         self.model.train(x_, r_, a_, trainer_id)
@@ -97,20 +97,20 @@ class Server:
     def main(self):
         self.stats.start()
         SyncManager.register('deque', deque)
-        m = SyncManager(); m.start(); DQ_training_q = m.deque(maxlen=Config.MAX_BUFFER_SIZE)
-        lock = Lock(); DQ_training_q_size = Value('i', 0)
+        m = SyncManager(); m.start(); QL_training_q = m.deque(maxlen=Config.MAX_BUFFER_SIZE)
+        lock = Lock(); QL_training_q_size = Value('i', 0)
         
         for _ in range(Config.AGENTS):
-            self.add_agent(DQ_training_q, DQ_training_q_size, lock)
+            self.add_agent(QL_training_q, QL_training_q_size, lock)
         for _ in range(Config.PREDICTORS):
             self.add_predictor()
         for _ in range(Config.PG_TRAINERS):
             self.add_PG_trainer()
-        for _ in range(Config.DQ_TRAINERS):
-            self.add_DQ_trainer(DQ_training_q, DQ_training_q_size)
+        for _ in range(Config.QL_TRAINERS):
+            self.add_QL_trainer(QL_training_q, QL_training_q_size)
 
         if Config.PLAY_MODE:
-            for trainer in self.PG_trainers + self.DQ_trainers:
+            for trainer in self.PG_trainers + self.QL_trainers:
                 trainer.enabled = False
 
         learning_rate_multiplier = (Config.LEARNING_RATE_END - Config.LEARNING_RATE_START) / Config.ANNEALING_EPISODE_COUNT
