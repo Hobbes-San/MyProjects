@@ -25,8 +25,8 @@ class Config:
     PREDICTORS = 2
     # Number of PG Trainers
     PG_TRAINERS = 4
-    #Number of DQ Trainers
-    DQ_TRAINERS = 1
+    #Number of QL Trainers
+    QL_TRAINERS = 1
 
     # Device
     DEVICE = 'gpu:0'
@@ -48,7 +48,7 @@ class Config:
     MAX_BUFFER_SIZE = 4000
     MIN_BUFFER_SIZE = 3500
     MAX_QUEUE_SIZE = 100
-    DQ_BATCH_SIZE = 32
+    QL_BATCH_SIZE = 32
     
     PREDICTION_BATCH_SIZE = 128
 
