@@ -7,6 +7,7 @@ else:
 from datetime import datetime
 from multiprocessing import Process, Queue, Value
 
+import matplotlib.pyplot as plt
 import numpy as np
 import time
 
@@ -19,9 +20,6 @@ class ProcessStats(Process):
         self.episode_count = Value('i', 0)
         self.training_count = Value('i', 0)
         self.should_save_model = Value('i', 0)
-        self.trainer_count = Value('i', 0)
-        self.predictor_count = Value('i', 0)
-        self.agent_count = Value('i', 0)
         self.total_frame_count = 0
 
     def FPS(self):
@@ -37,10 +35,11 @@ class ProcessStats(Process):
             rolling_frame_count = 0
             rolling_reward = 0
             results_q = queueQueue(maxsize=Config.STAT_ROLLING_MEAN_WINDOW)
+            scores = []
             
             self.start_time = time.time()
             first_time = datetime.now()
-            while True:
+            while self.episode_count.value < Config.EPISODES:
                 episode_time, reward, length = self.episode_log_q.get()
                 results_logger.write('%s, %d, %d\n' % (episode_time.strftime("%Y-%m-%d %H:%M:%S"), reward, length))
                 results_logger.flush()
@@ -63,16 +62,21 @@ class ProcessStats(Process):
                     self.should_save_model.value = 1
 
                 if self.episode_count.value % Config.PRINT_STATS_FREQUENCY == 0:
+                    Rscore = rolling_reward / results_q.qsize()
+                    scores.append(Rscore)
                     print(
                         '[Time: %8d] '
                         '[Episode: %8d Score: %10.4f] '
                         '[RScore: %10.4f RPPS: %5d] '
                         '[PPS: %5d TPS: %5d] '
-                        '[NT: %2d NP: %2d NA: %2d]'
                         % (int(time.time()-self.start_time),
                            self.episode_count.value, reward,
-                           rolling_reward / results_q.qsize(),
+                           Rscore,
                            rolling_frame_count / (datetime.now() - first_time).total_seconds(),
-                           self.FPS(), self.TPS(),
-                           self.trainer_count.value, self.predictor_count.value, self.agent_count.value))
+                           self.FPS(), self.TPS()))
                     sys.stdout.flush()
+            plt.plot(np.arange(100, 30100, 100), scores)
+            plt.xlabel('Episode Count')
+            plt.ylabel('Score')
+            plt.show()
+            plt.savefig('SpaceInvaders_PGQL.png')
