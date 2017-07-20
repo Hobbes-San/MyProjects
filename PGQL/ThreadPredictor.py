@@ -40,8 +40,8 @@ class ThreadPredictor(Thread):
                 Q_value_id, Q_value_states = self.server.Q_value_prediction_q.get()
                 Q = self.server.model.predict_Q_value(Q_value_states)
                 
-                if Q_value_id < len(self.server.DQ_trainers):
-                    self.server.DQ_trainers[Q_value_id].Q_value_wait_q.put(Q)
+                if Q_value_id < len(self.server.QL_trainers):
+                    self.server.QL_trainers[Q_value_id].Q_value_wait_q.put(Q)
                 Q_value_size += 1
             
             v_size = 0
