@@ -9,15 +9,15 @@ from Environment import Environment
 from Experience import Experience
 
 class ProcessAgent(Process):
-    def __init__(self, id, PG_training_q, DQ_training_q, DQ_training_q_size,
+    def __init__(self, id, PG_training_q, QL_training_q, QL_training_q_size,
                  prediction_q, episode_log_q, lock):
         super(ProcessAgent, self).__init__()
 
         self.id = id
         
         self.PG_training_q = PG_training_q
-        self.DQ_training_q = DQ_training_q
-        self.DQ_training_q_size = DQ_training_q_size
+        self.QL_training_q = QL_training_q
+        self.QL_training_q_size = QL_training_q_size
         self.prediction_q = prediction_q
         self.episode_log_q = episode_log_q
         self.lock = lock
@@ -90,8 +90,8 @@ class ProcessAgent(Process):
                 total_length += len(experiences) + 1  # +1 for last frame that we drop
                 self.PG_training_q.put((experiences, terminal_reward))
                 for exp in experiences:
-                    self.DQ_training_q.append(exp)
+                    self.QL_training_q.append(exp)
                     time.sleep(0.0001)
                     with self.lock:
-                        self.DQ_training_q_size.value += 1
+                        self.QL_training_q_size.value += 1
             self.episode_log_q.put((datetime.now(), total_reward, total_length))
