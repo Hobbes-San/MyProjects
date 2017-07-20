@@ -5,15 +5,15 @@ import random
 
 from Config import Config
 
-class ThreadDQ_Trainer(Thread):
-    def __init__(self, server, id, DQ_training_q, DQ_training_q_size):
-        super(ThreadDQ_Trainer, self).__init__()
+class ThreadQL_Trainer(Thread):
+    def __init__(self, server, id, QL_training_q, QL_training_q_size):
+        super(ThreadQL_Trainer, self).__init__()
         self.setDaemon(True)
 
         self.id = id
         self.server = server
-        self.DQ_training_q = DQ_training_q
-        self.DQ_training_q_size = DQ_training_q_size
+        self.QL_training_q = QL_training_q
+        self.QL_training_q_size = QL_training_q_size
         self.Q_value_wait_q = Queue(maxsize=1)
         self.exit_flag = False
     
@@ -29,9 +29,9 @@ class ThreadDQ_Trainer(Thread):
     def run(self):
         while not self.exit_flag:
             if Config.TRAIN_MODELS:
-                if self.DQ_training_q_size.value < Config.MIN_BUFFER_SIZE or self.server.model.get_global_step() % 20 != 0:
+                if self.QL_training_q_size.value < Config.MIN_BUFFER_SIZE or self.server.model.get_global_step() % 20 != 0:
                     continue
-                experiences = random.sample(self.DQ_training_q._getvalue(), Config.DQ_BATCH_SIZE)
+                experiences = random.sample(self.QL_training_q._getvalue(), Config.QL_BATCH_SIZE)
                 prevs, actions, rewards, curs, dones = self.convert_data(experiences)
                 self.server.Q_value_prediction_q.put((self.id, prevs))
                 prev_Q = np.sum(self.Q_value_wait_q.get() * actions, axis=1)
