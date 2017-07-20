@@ -4,7 +4,7 @@ class Config:
     # Game configuration
 
     # Name of the game, with version (e.g. PongDeterministic-v0)
-    ATARI_GAME = 'Pong-v0'
+    ATARI_GAME = 'SpaceInvaders-v0'
 
     # Enable to see the trained agent in action
     PLAY_MODE = False
@@ -23,16 +23,13 @@ class Config:
     AGENTS = 32
     # Number of Predictors
     PREDICTORS = 2
-    # Number of Trainers
-    TRAINERS = 4
+    # Number of PG Trainers
+    PG_TRAINERS = 4
+    #Number of DQ Trainers
+    DQ_TRAINERS = 1
 
     # Device
     DEVICE = 'gpu:0'
-
-    # Enable the dynamic adjustment (+ waiting time to start it)
-    DYNAMIC_SETTINGS = False
-    DYNAMIC_SETTINGS_STEP_WAIT = 20
-    DYNAMIC_SETTINGS_INITIAL_WAIT = 10
 
     #########################################################################
     # Algorithm parameters
@@ -47,9 +44,9 @@ class Config:
     REWARD_MIN = -1
     REWARD_MAX = 1
 
-    # Max size of the queue
-    MAX_BUFFER_SIZE = 10000
-    MIN_BUFFER_SIZE = 1000
+    # Parameters for the Buffer
+    MAX_BUFFER_SIZE = 4000
+    MIN_BUFFER_SIZE = 3500
     MAX_QUEUE_SIZE = 100
     DQ_BATCH_SIZE = 32
     
@@ -61,8 +58,8 @@ class Config:
     IMAGE_HEIGHT = 84
 
     # Total number of episodes and annealing frequency
-    EPISODES = 400000
-    ANNEALING_EPISODE_COUNT = 400000
+    EPISODES = 30000
+    ANNEALING_EPISODE_COUNT = 30000
 
     # Entropy regualrization hyper-parameter
     BETA_START = 0.01
@@ -86,7 +83,7 @@ class Config:
     # Epsilon (regularize policy lag in GA3C)
     LOG_EPSILON = 1e-6
     # Training min batch size - increasing the batch size increases the stability of the algorithm, but make learning slower
-    PG_TRAINING_MIN_BATCH_SIZE = 40
+    PG_TRAINING_MIN_BATCH_SIZE = 30
     
     #########################################################################
     # Log and save
