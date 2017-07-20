@@ -66,12 +66,13 @@ class NetworkVP:
         self.selected_action_prob = tf.reduce_sum(self.softmax_p * self.action_index, axis=1)
         
         # The entropy cost
-        self.cost_p_2 = self.cost_p_2 = -1 * self.var_beta * \
+        self.cost_p_2 = -1 * self.var_beta * \
                         tf.reduce_sum(tf.log(tf.maximum(self.softmax_p, self.log_epsilon)) *
                                       self.softmax_p, axis=1)
-                        
+        
+        # The state-action values
         self.Q_values = self.var_beta * (tf.log(tf.maximum(self.softmax_p, self.log_epsilon))) + \
-                        self.cost_p_2 + self.logits_v
+                        tf.expand_dims(self.cost_p_2, 1) + tf.expand_dims(self.logits_v, 1)
        
         # The value cost
         self.cost_v = -tf.reduce_sum(self.y_r*self.logits_v, axis=0)
@@ -200,8 +201,10 @@ class NetworkVP:
         prediction = self.sess.run(self.softmax_p, feed_dict={self.x: x})
         return prediction
     
-    def predict_Q_value(self, x, actions):
-        prediction = self.sess.run(self.Q_values, feed_dict={self.x: x})
+    def predict_Q_value(self, x):
+        feed_dict = self.__get_base_feed_dict()
+        feed_dict.update({self.x: x})
+        prediction = self.sess.run(self.Q_values, feed_dict=feed_dict)
         return prediction
     
     def predict_p_and_v(self, x):
