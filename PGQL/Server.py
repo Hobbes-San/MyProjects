@@ -33,8 +33,6 @@ class Server:
         self.Q_value_prediction_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
 
         self.model = NetworkVP(Config.DEVICE, Config.NETWORK_NAME, Environment().get_num_actions())
-        if Config.LOAD_CHECKPOINT:
-            self.stats.episode_count.value = self.model.load()
 
         self.frame_counter = 0
 
