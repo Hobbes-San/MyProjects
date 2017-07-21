@@ -1,5 +1,3 @@
-import os
-import re
 import numpy as np
 import tensorflow as tf
 
@@ -30,7 +28,7 @@ class NetworkVP:
                         allow_soft_placement=True,
                         log_device_placement=False,
                         gpu_options=tf.GPUOptions(allow_growth=True)))
-                self.sess.run(tf.global_variables_initializer())
+                self.sess.run(tf.global_variables_initializer())      
 
     def _create_graph(self):
         self.x = tf.placeholder(
@@ -56,7 +54,7 @@ class NetworkVP:
         
         self.logits_v = tf.squeeze(self.dense_layer(self.d1, 1, 'logits_v', func=None), axis=[1])
         self.logits_p = self.dense_layer(self.d1, self.num_actions, 'logits_p', func=None)
-        self.softmax_p = (tf.nn.softmax(self.logits_p) + Config.MIN_POLICY) / (1.0 + Config.MIN_POLICY * self.num_actions)
+        self.softmax_p = tf.nn.softmax(self.logits_p)
         self.selected_action_prob = tf.reduce_sum(self.softmax_p * self.action_index, axis=1)
         
         # The entropy cost
@@ -71,14 +69,17 @@ class NetworkVP:
         # The value cost
         self.cost_v = -tf.reduce_sum(self.y_r*self.logits_v, axis=0)
         
-        #The Policy Gradient cost
+        # The Policy Gradient cost
         self.cost_p_1 = tf.log(tf.maximum(self.selected_action_prob, self.log_epsilon)) \
                         * self.y_r
         
         self.cost_p_1_agg = tf.reduce_sum(self.cost_p_1, axis=0)
         self.cost_p_2_agg = tf.reduce_sum(self.cost_p_2, axis=0)
+        
+        # The total cost
         self.cost_p = -(self.cost_p_1_agg + self.cost_p_2_agg)
         
+
         self.cost_all = self.cost_p + self.cost_v
         self.opt = tf.train.RMSPropOptimizer(
             learning_rate=self.var_learning_rate,
@@ -157,12 +158,6 @@ class NetworkVP:
         feed_dict = self.__get_base_feed_dict()
         feed_dict.update({self.x: x, self.y_r: y_r, self.action_index: a})
         self.sess.run(self.train_op, feed_dict=feed_dict)
-
-    def log(self, x, y_r, a):
-        feed_dict = self.__get_base_feed_dict()
-        feed_dict.update({self.x: x, self.y_r: y_r, self.action_index: a})
-        step, summary = self.sess.run([self.global_step, self.summary_op], feed_dict=feed_dict)
-        self.log_writer.add_summary(summary, step)
        
     def get_variables_names(self):
         return [var.name for var in self.graph.get_collection('trainable_variables')]
