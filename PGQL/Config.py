@@ -10,15 +10,10 @@ class Config:
     PLAY_MODE = False
     # Enable to train
     TRAIN_MODELS = True
-    # Load old models. Throws if the model doesn't exist
-    LOAD_CHECKPOINT = False
-    # If 0, the latest checkpoint is loaded
-    LOAD_EPISODE = 0 
 
     #########################################################################
     # Number of agents, predictors, trainers and other system settings
     
-    # If the dynamic configuration is on, these are the initial values.
     # Number of Agents
     AGENTS = 32
     # Number of Predictors
@@ -44,7 +39,7 @@ class Config:
     REWARD_MIN = -1
     REWARD_MAX = 1
 
-    # Parameters for the Buffer
+    # Parameters for the PG queue and QL replay buffer
     MAX_BUFFER_SIZE = 4000
     MIN_BUFFER_SIZE = 3500
     MAX_QUEUE_SIZE = 100
@@ -57,9 +52,8 @@ class Config:
     IMAGE_WIDTH = 84
     IMAGE_HEIGHT = 84
 
-    # Total number of episodes and annealing frequency
+    # Total number of episodes
     EPISODES = 30000
-    ANNEALING_EPISODE_COUNT = 30000
 
     # Entropy regualrization hyper-parameter
     BETA_START = 0.01
@@ -73,30 +67,16 @@ class Config:
     RMSPROP_DECAY = 0.99
     RMSPROP_MOMENTUM = 0.0
     RMSPROP_EPSILON = 0.1
-
-    # Dual RMSProp - we found that using a single RMSProp for the two cost function works better and faster
-    DUAL_RMSPROP = False
     
     # Gradient clipping
     USE_GRAD_CLIP = True
-    GRAD_CLIP_NORM = 40.0 
+    GRAD_CLIP_NORM = 40.0
     # Epsilon (regularize policy lag in GA3C)
     LOG_EPSILON = 1e-6
     # Training min batch size - increasing the batch size increases the stability of the algorithm, but make learning slower
     PG_TRAINING_MIN_BATCH_SIZE = 30
     
     #########################################################################
-    # Log and save
-
-    # Enable TensorBoard
-    TENSORBOARD = False
-    # Update TensorBoard every X training steps
-    TENSORBOARD_UPDATE_FREQUENCY = 1000
-
-    # Enable to save models every SAVE_FREQUENCY episodes
-    SAVE_MODELS = False
-    # Save every SAVE_FREQUENCY episodes
-    SAVE_FREQUENCY = 1000
     
     # Print stats every PRINT_STATS_FREQUENCY episodes
     PRINT_STATS_FREQUENCY = 100
