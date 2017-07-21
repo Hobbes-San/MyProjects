@@ -36,6 +36,7 @@ class ThreadPG_Trainer(Thread):
         while not self.exit_flag:
             if Config.TRAIN_MODELS:
                 batch_size = 0
+                # Batch up data for PG update step
                 while batch_size <= Config.PG_TRAINING_MIN_BATCH_SIZE:
                     experiences, terminal_reward = self.server.PG_training_q.get()
                     prevs, actions, rewards, _, _ = self.convert_data(experiences)
@@ -49,6 +50,8 @@ class ThreadPG_Trainer(Thread):
                     batch_size += len(returns)
                 self.server.v_prediction_q.put((self.id, x__))
                 baselines = self.v_wait_q.get()
+                # Subtract by the PG baselines to get PG advantages
                 r__ = r__ - baselines
+                # The main network expects a 1D array, so we must squeeze
                 r__ = np.squeeze(r__)
                 self.server.train_model(x__, r__, a__, self.id)
