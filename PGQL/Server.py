@@ -16,7 +16,8 @@ from ThreadQL_Trainer import ThreadQL_Trainer
 class Server:
     def __init__(self):
         self.stats = ProcessStats()
-
+        
+        # The queue below is for PG updates
         self.PG_training_q = Queue(maxsize=Config.MAX_QUEUE_SIZE)
         
         # The queue below is for action probability and value predictions that will be
@@ -88,18 +89,15 @@ class Server:
         
         self.stats.training_count.value += 1
 
-        if Config.TENSORBOARD and self.stats.training_count.value % Config.TENSORBOARD_UPDATE_FREQUENCY == 0:
-            self.model.log(x_, r_, a_)
-
-    def save_model(self):
-        self.model.save(self.stats.episode_count.value)
-
     def main(self):
         self.stats.start()
+        # Make deque multiprocessing friendly by using SyncManager
         SyncManager.register('deque', deque)
         m = SyncManager(); m.start(); QL_training_q = m.deque(maxlen=Config.MAX_BUFFER_SIZE)
+        # Initialize lock to keep an accurate counter for the buffer size
         lock = Lock(); QL_training_q_size = Value('i', 0)
-        
+        # Since ThreadDynamicAdjustment class is gone, we must add all processes
+        # and agents manually
         for _ in range(Config.AGENTS):
             self.add_agent(QL_training_q, QL_training_q_size, lock)
         for _ in range(Config.PREDICTORS):
@@ -113,21 +111,9 @@ class Server:
             for trainer in self.PG_trainers + self.QL_trainers:
                 trainer.enabled = False
 
-        learning_rate_multiplier = (Config.LEARNING_RATE_END - Config.LEARNING_RATE_START) / Config.ANNEALING_EPISODE_COUNT
-        beta_multiplier = (Config.BETA_END - Config.BETA_START) / Config.ANNEALING_EPISODE_COUNT
-
-        while self.stats.episode_count.value < Config.EPISODES:
-            step = min(self.stats.episode_count.value, Config.ANNEALING_EPISODE_COUNT - 1)
-            self.model.learning_rate = Config.LEARNING_RATE_START + learning_rate_multiplier * step
-            self.model.beta = Config.BETA_START + beta_multiplier * step
-
-            # Saving is async - even if we start saving at a given episode, we may save the model at a later episode
-            if Config.SAVE_MODELS and self.stats.should_save_model.value > 0:
-                self.save_model()
-                self.stats.should_save_model.value = 0
-
-            time.sleep(0.01)
-            
+        time.sleep(0.01)
+        
+        # Shut down everything
         m.shutdown()
         while self.agents:
             self.remove_agent()
