@@ -19,7 +19,6 @@ class ProcessStats(Process):
         self.episode_log_q = Queue(maxsize=100)
         self.episode_count = Value('i', 0)
         self.training_count = Value('i', 0)
-        self.should_save_model = Value('i', 0)
         self.total_frame_count = 0
 
     def FPS(self):
@@ -57,10 +56,7 @@ class ProcessStats(Process):
                     first_time = old_episode_time
 
                 results_q.put((episode_time, reward, length))
-
-                if self.episode_count.value % Config.SAVE_FREQUENCY == 0:
-                    self.should_save_model.value = 1
-
+                # Print stats and keep a list of scores
                 if self.episode_count.value % Config.PRINT_STATS_FREQUENCY == 0:
                     Rscore = rolling_reward / results_q.qsize()
                     scores.append(Rscore)
@@ -75,6 +71,7 @@ class ProcessStats(Process):
                            rolling_frame_count / (datetime.now() - first_time).total_seconds(),
                            self.FPS(), self.TPS()))
                     sys.stdout.flush()
+            # Plot the scores and save the figure
             plt.plot(np.arange(100, 30100, 100), scores)
             plt.xlabel('Episode Count')
             plt.ylabel('Score')
