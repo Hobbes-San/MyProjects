@@ -89,9 +89,12 @@ class ProcessAgent(Process):
                 total_reward += reward_sum
                 total_length += len(experiences) + 1  # +1 for last frame that we drop
                 self.PG_training_q.put((experiences, terminal_reward))
+                # Also add experiences to the QL replay buffer
                 for exp in experiences:
                     self.QL_training_q.append(exp)
+                    # Sleeping helps with updating the counter
                     time.sleep(0.0001)
+                    # Use locks to keep an accurate counter for the buffer size
                     with self.lock:
                         self.QL_training_q_size.value += 1
             self.episode_log_q.put((datetime.now(), total_reward, total_length))
