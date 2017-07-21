@@ -32,12 +32,6 @@ class NetworkVP:
                         gpu_options=tf.GPUOptions(allow_growth=True)))
                 self.sess.run(tf.global_variables_initializer())
 
-                if Config.TENSORBOARD: self._create_tensor_board()
-                if Config.LOAD_CHECKPOINT or Config.SAVE_MODELS:
-                    vars = tf.global_variables()
-                    self.saver = tf.train.Saver({var.name: var for var in vars}, max_to_keep=0)
-                
-
     def _create_graph(self):
         self.x = tf.placeholder(
             tf.float32, [None, self.img_height, self.img_width, self.img_channels], name='X')
@@ -85,70 +79,19 @@ class NetworkVP:
         self.cost_p_2_agg = tf.reduce_sum(self.cost_p_2, axis=0)
         self.cost_p = -(self.cost_p_1_agg + self.cost_p_2_agg)
         
-        if Config.DUAL_RMSPROP:
-            self.opt_p = tf.train.RMSPropOptimizer(
-                learning_rate=self.var_learning_rate,
-                decay=Config.RMSPROP_DECAY,
-                momentum=Config.RMSPROP_MOMENTUM,
-                epsilon=Config.RMSPROP_EPSILON)
-
-            self.opt_v = tf.train.RMSPropOptimizer(
-                learning_rate=self.var_learning_rate,
-                decay=Config.RMSPROP_DECAY,
-                momentum=Config.RMSPROP_MOMENTUM,
-                epsilon=Config.RMSPROP_EPSILON)
-        else:
-            self.cost_all = self.cost_p + self.cost_v
-            self.opt = tf.train.RMSPropOptimizer(
-                learning_rate=self.var_learning_rate,
-                decay=Config.RMSPROP_DECAY,
-                momentum=Config.RMSPROP_MOMENTUM,
-                epsilon=Config.RMSPROP_EPSILON)
+        self.cost_all = self.cost_p + self.cost_v
+        self.opt = tf.train.RMSPropOptimizer(
+            learning_rate=self.var_learning_rate,
+            decay=Config.RMSPROP_DECAY,
+            momentum=Config.RMSPROP_MOMENTUM,
+            epsilon=Config.RMSPROP_EPSILON)
 
         if Config.USE_GRAD_CLIP:
-            if Config.DUAL_RMSPROP:
-                self.opt_grad_v = self.opt_v.compute_gradients(self.cost_v)
-                self.opt_grad_v_clipped = [(tf.clip_by_norm(g, Config.GRAD_CLIP_NORM),v) 
-                                            for g,v in self.opt_grad_v if not g is None]
-                self.train_op_v = self.opt_v.apply_gradients(self.opt_grad_v_clipped)
-            
-                self.opt_grad_p = self.opt_p.compute_gradients(self.cost_p)
-                self.opt_grad_p_clipped = [(tf.clip_by_norm(g, Config.GRAD_CLIP_NORM),v)
-                                            for g,v in self.opt_grad_p if not g is None]
-                self.train_op_p = self.opt_p.apply_gradients(self.opt_grad_p_clipped)
-                self.train_op = [self.train_op_p, self.train_op_v]
-            else:
-                self.opt_grad = self.opt.compute_gradients(self.cost_all)
-                self.opt_grad_clipped = [(tf.clip_by_average_norm(g, Config.GRAD_CLIP_NORM),v) for g,v in self.opt_grad]
-                self.train_op = self.opt.apply_gradients(self.opt_grad_clipped)
+            self.opt_grad = self.opt.compute_gradients(self.cost_all)
+            self.opt_grad_clipped = [(tf.clip_by_average_norm(g, Config.GRAD_CLIP_NORM),v) for g,v in self.opt_grad]
+            self.train_op = self.opt.apply_gradients(self.opt_grad_clipped)
         else:
-            if Config.DUAL_RMSPROP:
-                self.train_op_v = self.opt_p.minimize(self.cost_v, global_step=self.global_step)
-                self.train_op_p = self.opt_v.minimize(self.cost_p, global_step=self.global_step)
-                self.train_op = [self.train_op_p, self.train_op_v]
-            else:
-                self.train_op = self.opt.minimize(self.cost_all, global_step=self.global_step)
-
-
-    def _create_tensor_board(self):
-        summaries = tf.get_collection(tf.GraphKeys.SUMMARIES)
-        summaries.append(tf.summary.scalar("Pcost_advantage", self.cost_p_1_agg))
-        summaries.append(tf.summary.scalar("Pcost_entropy", self.cost_p_2_agg))
-        summaries.append(tf.summary.scalar("Pcost", self.cost_p))
-        summaries.append(tf.summary.scalar("Vcost", self.cost_v))
-        summaries.append(tf.summary.scalar("LearningRate", self.var_learning_rate))
-        summaries.append(tf.summary.scalar("Beta", self.var_beta))
-        for var in tf.trainable_variables():
-            summaries.append(tf.summary.histogram("weights_%s" % var.name, var))
-
-        summaries.append(tf.summary.histogram("activation_n1", self.n1))
-        summaries.append(tf.summary.histogram("activation_n2", self.n2))
-        summaries.append(tf.summary.histogram("activation_d2", self.d1))
-        summaries.append(tf.summary.histogram("activation_v", self.logits_v))
-        summaries.append(tf.summary.histogram("activation_p", self.softmax_p))
-
-        self.summary_op = tf.summary.merge(summaries)
-        self.log_writer = tf.summary.FileWriter("logs/%s" % self.model_name, self.sess.graph)
+            self.train_op = self.opt.minimize(self.cost_all, global_step=self.global_step)
 
     def dense_layer(self, input, out_dim, name, func=tf.nn.relu):
         in_dim = input.get_shape().as_list()[-1]
@@ -220,23 +163,6 @@ class NetworkVP:
         feed_dict.update({self.x: x, self.y_r: y_r, self.action_index: a})
         step, summary = self.sess.run([self.global_step, self.summary_op], feed_dict=feed_dict)
         self.log_writer.add_summary(summary, step)
-
-    def _checkpoint_filename(self, episode):
-        return 'checkpoints/%s_%08d' % (self.model_name, episode)
-    
-    def _get_episode_from_filename(self, filename):
-        # TODO: hacky way of getting the episode. ideally episode should be stored as a TF variable
-        return int(re.split('/|_|\.', filename)[2])
-
-    def save(self, episode):
-        self.saver.save(self.sess, self._checkpoint_filename(episode))
-
-    def load(self):
-        filename = tf.train.latest_checkpoint(os.path.dirname(self._checkpoint_filename(episode=0)))
-        if Config.LOAD_EPISODE > 0:
-            filename = self._checkpoint_filename(Config.LOAD_EPISODE)
-        self.saver.restore(self.sess, filename)
-        return self._get_episode_from_filename(filename)
        
     def get_variables_names(self):
         return [var.name for var in self.graph.get_collection('trainable_variables')]
