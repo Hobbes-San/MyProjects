@@ -88,9 +88,3 @@ class Config:
     RESULTS_FILENAME = 'results.txt'
     # Network checkpoint name
     NETWORK_NAME = 'network'
-
-    #########################################################################
-    # More experimental parameters here
-    
-    # Minimum policy
-    MIN_POLICY = 0.0
