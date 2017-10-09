@@ -1,12 +1,6 @@
 import collections
-from itertools import zip_longest
-
 import torch
 from torch.autograd import Variable
-import torch.nn as nn
-from torch import optim
-import torch.nn.functional as F
-
 
 class Fold(object):
 
@@ -142,56 +136,3 @@ class Fold(object):
                 if isinstance(lst[0], Fold.Node):
                     print(', '.join([str(x.get(values).size()) for x in lst]))
             raise
-
-
-class Unfold(object):
-    """Replacement of Fold for debugging, where it does computation right away."""
-
-    class Node(object):
-
-        def __init__(self, tensor):
-            self.tensor = tensor
-
-        def __repr__(self):
-            return str(self.tensor)
-
-        def nobatch(self):
-            return self
-
-        def split(self, num):
-            return [Unfold.Node(self.tensor[i]) for i in range(num)]
-
-    def __init__(self, model, volatile=False, cuda=False):
-        self.model = model
-        self.volatile = volatile
-        self._cuda = cuda
-
-    def cuda(self):
-        self._cuda = True
-        return self
-
-    def _arg(self, arg):
-        if isinstance(arg, Unfold.Node):
-            return arg.tensor
-        elif isinstance(arg, int):
-            if self._cuda:
-                return Variable(torch.cuda.LongTensor([arg]), volatile=self.volatile)
-            else:
-                return Variable(torch.LongTensor([arg]), volatile=self.volatile)
-        else:
-            return arg
-
-    def add(self, op, *args):
-        values = []
-        for arg in args:
-            values.append(self._arg(arg))
-        res = getattr(self.nn, op)(*values)
-        return Unfold.Node(res)
-
-    def apply(self, model, nodes):
-        if nn != self.nn:
-            raise ValueError("Expected that nn argument passed to constructor and passed to apply would match.")
-        result = []
-        for n in nodes:
-            result.append(torch.cat([self._arg(a) for a in n]))
-        return result
