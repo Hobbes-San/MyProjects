@@ -260,7 +260,7 @@ for i in range(len(idx2word_Cpp)):
 
 print (time.localtime())
 
-java_data = []; Cpp_data = []
+Cpp_data = []
 
 with open('indexed_trees_labeled.jsonl', 'r') as f:
     line_count = 0
@@ -290,81 +290,6 @@ Cpp_test_size = Cpp_total_size - Cpp_train_size
 
 Cpp_train_data = Cpp_data[:Cpp_train_size]; Cpp_test_data = Cpp_data[Cpp_train_size:]
 
-"""class BoWClassifier(nn.Module):
-    
-    def __init__(self):
-        super(BoWClassifier, self).__init__()
-        self.linear = nn.Linear(236, 2)
-    
-    def forward(self, x):
-        return torch.nn.functional.log_softmax(self.linear(x))
-
-bc = BoWClassifier()
-loss_BoW = nn.NLLLoss()
-optimizer = optim.SGD(bc.parameters(), lr = 0.1)
-
-for epoch in range(10):
-    correct = 0
-    for tree, label in train_data:
-        bc.zero_grad()
-        x = torch.cuda.zeros(236)
-        for node in tree.traverse():
-            x[int(node.val)] += 1
-        x = Variable(x.view(1, -1))
-        y = Variable(torch.cuda.LongTensor([label]))
-        
-        log_probs = bc.forward(x)
-        
-        loss = loss_BoW(log_probs, y)
-        loss.backward()
-        optimizer.step()
-    
-    for tree, label in test_data:
-        x = torch.cuda.zeros(236)
-        for node in tree.traverse():
-            x[int(node.val)] += 1
-        x = Variable(x.view(1, -1))
-        y = Variable(torch.cuda.LongTensor([label]))
-        
-        log_probs = bc.forward(x)
-        _, predicted = torch.max(log_probs, 1)
-        correct += (predicted == y).data[0]
-        
-    percentage = correct/len(test_data)*100.0
-    print (("Epoch: %d Correct Rate Percentage: %f") % (epoch, percentage))
-    print (time.localtime())"""
-
-"""class TreeLSTM(nn.Module):
-    def __init__(self, num_units):
-        super(TreeLSTM, self).__init__()
-        self.num_units = num_units
-        self.left = nn.Linear(num_units, 5 * num_units)
-        self.right = nn.Linear(num_units, 5 * num_units)
-        self.from_word = Variable(torch.randn(1).cuda()*torch.eye(self.num_units).cuda())
-        self.from_children = Variable(torch.randn(1).cuda()*torch.eye(self.num_units).cuda())
-        
-    def forward(self, word_vec, left_h, left_c, right_h, right_c):
-        lstm_in = self.left(left_h) + self.right(right_h)
-        a, i, f1, f2, o = lstm_in.chunk(5, 1)
-        c = a.tanh() * i.sigmoid() + f1.sigmoid()*left_c + f2.sigmoid()*right_c
-        h = torch.mm(o.sigmoid() * c.tanh(), self.from_children) + \
-            torch.mm(word_vec, self.from_word)
-        return h, c
-    
-    def forward(self, inputs):
-        m = len(inputs)
-        lstm_in = self.left(inputs[0][0])
-        for i in range(1, m):
-            r = i/(m-1); l = 1-r
-            lstm_in += (l * self.left(inputs[i][0]) + r * self.right(inputs[i][0]))
-        a, i, f1, f2, o = lstm_in.chunk(5, 1)
-        c = a.tanh() * i.sigmoid() + f1.sigmoid() * inputs[0][1]
-        for i in range(1, m):
-            r = i/(m-1); l = 1-r
-            c += ((l * f1 + r * f2).sigmoid() * inputs[i][1])
-        h = o.sigmoid() * c.tanh()
-        return h, c"""
-
 class RecursiveModel(nn.Module):
 
     def __init__(self, vocab_size, size):
@@ -380,7 +305,7 @@ class RecursiveModel(nn.Module):
         self.from_word.weight = nn.Parameter(torch.eye(size))
         self.from_children.weight = nn.Parameter(torch.eye(size))
         
-    def process_children(self, word_idx, left_h, left_c, right_h, right_c):
+    def process_children(self, left_h, left_c, right_h, right_c, word_idx):
         word_vec = self.embedding(word_idx)
         lstm_in = self.left(left_h) + self.right(right_h)
         a, i, f1, f2, o = lstm_in.chunk(5, 1)
@@ -434,51 +359,56 @@ def validate(fold, batch, model):
     return num_correct
 
 load_previous = False
-Cpp_model = RecursiveModel(len(Cpp_word2idx), 25); Cpp_model.cuda()
+Cpp_model = RecursiveModel(len(Cpp_word2idx), 100); Cpp_model.cuda()
 
 if load_previous:
     print ('Loaded')
-    Cpp_model.load_state_dict(torch.load('Cpp_checkpoint.pth'))
+    Cpp_model.load_state_dict(torch.load('Cpp_checkpoint_Alt.pth'))
 Cpp_optimizer = optim.Adagrad(Cpp_model.parameters(), lr=0.01, weight_decay=0.001)
-Cpp_fold = torchfold_Alt.Fold()
 
-epochs = 1
+epochs = 10
 for epoch in range(epochs):
     shuffle (Cpp_train_data)
-    batch = []; count = 0; Cpp_fold.volatile = False
+    batch = []; count = 0
     for tree, label in Cpp_train_data:
         if len(batch) >= 50:
             count += 1
+            Cpp_fold = torchfold_Alt.Fold(); Cpp_fold.volatile = False
             loss = batch_update_recursive(Cpp_fold, batch, Cpp_model, Cpp_optimizer)
-            if count % 20 == 0:
-                print (' '.join(['Epoch:', str(epoch), 'Batch:', str(count), 'Loss:', str(loss.data[0])]))
-                print (time.localtime())
             batch = []
         batch.append((tree, label))
         
     if len(batch) > 0:
+        Cpp_fold = torchfold_Alt.Fold(); Cpp_fold.volatile = False
         batch_update_recursive(Cpp_fold, batch, Cpp_model, Cpp_optimizer)
     
-    count_ = 0; batch_ = []; total_correct = 0; Cpp_fold.volatile = True
+    count_ = 0; batch_ = []; total_correct = 0
     for tree, label in Cpp_test_data:
         if len(batch_) >= 50:
-            count_ += 1; num = validate(Cpp_fold, batch_, Cpp_model)
+            count_ += 1; Cpp_fold = torchfold_Alt.Fold(); Cpp_fold.volatile = True
+            num = validate(Cpp_fold, batch_, Cpp_model)
             total_correct += num
-            if count_ % 20 == 0:
-                print (' '.join(['Number of Correct Predictions from Batch:', str(count_), str(num)]))
-                print (time.localtime())
             batch_ = []
         batch_.append((tree, label))
     
     if len(batch_) > 0:
+        Cpp_fold = torchfold_Alt.Fold(); Cpp_fold.volatile = True
         num = validate(Cpp_fold, batch_, Cpp_model); total_correct += num
     
     prev_accuracy = 50
     accuracy = total_correct/len(Cpp_test_data)*100.0
-    print (''.join(['Epoch:', str(epoch), 'Final Accuracy: ', str(accuracy), '%']))
+    print (' '.join(['Epoch:', str(epoch), 'Final Accuracy:', str(accuracy), '%']))
     print (time.localtime())
     
     if accuracy > prev_accuracy:
-        torch.save(Cpp_model.state_dict(), 'Cpp_checkpoint.pth')
+        with open('indexed_trees_labeled_Cpp_Train_Alt.jsonl', 'w') as f:
+            for tree, label in Cpp_train_data:
+                r = []; util.serialize(tree, r)
+                f.write(json.dumps({'hired': label, 'solution': r, 'language': 'C++'}) + '\n')
+        with open('indexed_trees_labeled_Cpp_Test_Alt.jsonl', 'w') as f:
+            for tree, label in Cpp_test_data:
+                r = []; util.serialize(tree, r)
+                f.write(json.dumps({'hired': label, 'solution': r, 'language': 'C++'}) + '\n')
+        torch.save(Cpp_model.state_dict(), 'Cpp_checkpoint_Alt.pth')
     
     prev_accuracy = accuracy
