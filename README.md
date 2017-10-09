@@ -4,11 +4,11 @@ PGQL is a deep reinforcement learning algorithm using hybrid Policy Gradient/Dee
 
 Specifically, my modification makes the program normally do a Policy Gradient update, but once every fixed number of steps, do a Q-Learning update instead.
 
-Project 2: TNN
+Project 2: Near.ai
 
-TNN is a sentiment analysis program that uses a recursive neural tensor network (RNTN) to take as input sentences from movie reviews and then to score them (1-5) on how positive or negative the sentences are. The data files are all from the Stanford Natural Language Processing (NLP) group.
+This is a consulting project with Near.ai, which is a company trying to develop an AI to write code based on specifications given by the user.
 
-More specifically, in my implementation, each sentence is processed into a tree first, then turned into a sequence with post-order traversal, then fed into a recurrent neural network (RNN) for predicting and training. The reason for this iterative approach as opposed to the more intuitive recursive approach is that Theano builds a graph of all the shared variables before doing computations with them, so a recursive approach would incur heavy memory cost.
+I use both a Bag-of-Words logistic regression model and a Recursive neural network model, comparing and contrasting performances and what they allow us to say about the data. The Recursive model is implemented using Pytorch because it allows for dynamic input handling and dynamic batching.
 
 Project 3: Fablix
 
