@@ -366,7 +366,7 @@ if load_previous:
     Cpp_model.load_state_dict(torch.load('Cpp_checkpoint_Alt.pth'))
 Cpp_optimizer = optim.Adagrad(Cpp_model.parameters(), lr=0.01, weight_decay=0.001)
 
-epochs = 10
+epochs = 10; prev_accuracy = 50
 for epoch in range(epochs):
     shuffle (Cpp_train_data)
     batch = []; count = 0
@@ -395,7 +395,6 @@ for epoch in range(epochs):
         Cpp_fold = torchfold_Alt.Fold(); Cpp_fold.volatile = True
         num = validate(Cpp_fold, batch_, Cpp_model); total_correct += num
     
-    prev_accuracy = 50
     accuracy = total_correct/len(Cpp_test_data)*100.0
     print (' '.join(['Epoch:', str(epoch), 'Final Accuracy:', str(accuracy), '%']))
     print (time.localtime())
@@ -410,5 +409,4 @@ for epoch in range(epochs):
                 r = []; util.serialize(tree, r)
                 f.write(json.dumps({'hired': label, 'solution': r, 'language': 'C++'}) + '\n')
         torch.save(Cpp_model.state_dict(), 'Cpp_checkpoint_Alt.pth')
-    
-    prev_accuracy = accuracy
+        prev_accuracy = accuracy
