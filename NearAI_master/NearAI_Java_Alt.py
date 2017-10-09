@@ -260,7 +260,7 @@ for i in range(len(idx2word_Cpp)):
 
 print (time.localtime())
 
-java_data = []; Cpp_data = []
+java_data = []
 
 with open('indexed_trees_labeled.jsonl', 'r') as f:
     line_count = 0
@@ -275,8 +275,6 @@ with open('indexed_trees_labeled.jsonl', 'r') as f:
         stack = [indexed_tree]; util.deserialize(code_serialized, stack)
         if language == 'java':
             java_data.append((indexed_tree, label))
-        #else:
-        #    Cpp_data.append((indexed_tree, label))
         line_count += 1
         if line_count % 10000 == 0:
             print (line_count)
@@ -285,92 +283,11 @@ print ('Done with reading data')
 
 print (time.localtime())
 
-shuffle(java_data); java_data = java_data[:100]
+shuffle(java_data)
 java_total_size = len(java_data); java_train_size = int(java_total_size*(4/5))
 java_test_size = java_total_size - java_train_size
 
 java_train_data = java_data[:java_train_size]; java_test_data = java_data[java_train_size:]
-
-"""Cpp_total_size = len(Cpp_data); Cpp_train_size = int(Cpp_total_size*(4/5))
-Cpp_test_size = Cpp_total_size - Cpp_train_size
-
-java_train_data = java_data[:java_train_size]; java_test_data = java_data[java_train_size:]
-Cpp_train_data = Cpp_data[:java_train_size]; Cpp_test_data = Cpp_data[java_train_size:]"""
-
-"""class BoWClassifier(nn.Module):
-    
-    def __init__(self):
-        super(BoWClassifier, self).__init__()
-        self.linear = nn.Linear(236, 2)
-    
-    def forward(self, x):
-        return torch.nn.functional.log_softmax(self.linear(x))
-
-bc = BoWClassifier()
-loss_BoW = nn.NLLLoss()
-optimizer = optim.SGD(bc.parameters(), lr = 0.1)
-
-for epoch in range(10):
-    correct = 0
-    for tree, label in train_data:
-        bc.zero_grad()
-        x = torch.cuda.zeros(236)
-        for node in tree.traverse():
-            x[int(node.val)] += 1
-        x = Variable(x.view(1, -1))
-        y = Variable(torch.cuda.LongTensor([label]))
-        
-        log_probs = bc.forward(x)
-        
-        loss = loss_BoW(log_probs, y)
-        loss.backward()
-        optimizer.step()
-    
-    for tree, label in test_data:
-        x = torch.cuda.zeros(236)
-        for node in tree.traverse():
-            x[int(node.val)] += 1
-        x = Variable(x.view(1, -1))
-        y = Variable(torch.cuda.LongTensor([label]))
-        
-        log_probs = bc.forward(x)
-        _, predicted = torch.max(log_probs, 1)
-        correct += (predicted == y).data[0]
-        
-    percentage = correct/len(test_data)*100.0
-    print (("Epoch: %d Correct Rate Percentage: %f") % (epoch, percentage))
-    print (time.localtime())"""
-
-"""class TreeLSTM(nn.Module):
-    def __init__(self, num_units):
-        super(TreeLSTM, self).__init__()
-        self.num_units = num_units
-        self.left = nn.Linear(num_units, 5 * num_units)
-        self.right = nn.Linear(num_units, 5 * num_units)
-        self.from_word = Variable(torch.randn(1).cuda()*torch.eye(self.num_units).cuda())
-        self.from_children = Variable(torch.randn(1).cuda()*torch.eye(self.num_units).cuda())
-        
-    def forward(self, word_vec, left_h, left_c, right_h, right_c):
-        lstm_in = self.left(left_h) + self.right(right_h)
-        a, i, f1, f2, o = lstm_in.chunk(5, 1)
-        c = a.tanh() * i.sigmoid() + f1.sigmoid()*left_c + f2.sigmoid()*right_c
-        h = torch.mm(o.sigmoid() * c.tanh(), self.from_children) + \
-            torch.mm(word_vec, self.from_word)
-        return h, c
-    
-    def forward(self, inputs):
-        m = len(inputs)
-        lstm_in = self.left(inputs[0][0])
-        for i in range(1, m):
-            r = i/(m-1); l = 1-r
-            lstm_in += (l * self.left(inputs[i][0]) + r * self.right(inputs[i][0]))
-        a, i, f1, f2, o = lstm_in.chunk(5, 1)
-        c = a.tanh() * i.sigmoid() + f1.sigmoid() * inputs[0][1]
-        for i in range(1, m):
-            r = i/(m-1); l = 1-r
-            c += ((l * f1 + r * f2).sigmoid() * inputs[i][1])
-        h = o.sigmoid() * c.tanh()
-        return h, c"""
 
 class RecursiveModel(nn.Module):
 
@@ -442,54 +359,54 @@ def validate(fold, batch, model):
     return num_correct
 
 load_previous = False
-java_model = RecursiveModel(len(java_word2idx), 25); java_model.cuda()
-#Cpp_model = RecursiveModel(len(Cpp_word2idx), 25); Cpp_model.cuda()
+java_model = RecursiveModel(len(java_word2idx), 50); java_model.cuda()
 
 if load_previous:
     print ('Loaded')
-    java_model.load_state_dict(torch.load('java_checkpoint.pth'))
-    #Cpp_model.load_state_dict(torch.load('Cpp_checkpoint.pth'))
+    java_model.load_state_dict(torch.load('java_checkpoint_Alt.pth'))
 java_optimizer = optim.Adagrad(java_model.parameters(), lr=0.01, weight_decay=0.001)
-#Cpp_optimizer = optim.Adagrad(Cpp_model.parameters(), lr=0.001, weight_decay=0.01)
-java_fold = torchfold_Alt.Fold(); #Cpp_fold = torchfold.Fold()
 
-epochs = 1
+epochs = 10; prev_accuracy = 55
 for epoch in range(epochs):
     shuffle (java_train_data)
-    batch = []; count = 0; java_fold.volatile = False
+    batch = []; count = 0
     for tree, label in java_train_data:
         if len(batch) >= 50:
             count += 1
+            java_fold = torchfold_Alt.Fold(); java_fold.volatile = False
             loss = batch_update_recursive(java_fold, batch, java_model, java_optimizer)
-            if count % 20 == 0:
-                print (' '.join(['Epoch:', str(epoch), 'Batch:', str(count), 'Loss:', str(loss.data[0])]))
-                print (time.localtime())
             batch = []
         batch.append((tree, label))
         
     if len(batch) > 0:
+        java_fold = torchfold_Alt.Fold(); java_fold.volatile = False
         batch_update_recursive(java_fold, batch, java_model, java_optimizer)
     
-    count_ = 0; batch_ = []; total_correct = 0; java_fold.volatile = True
+    count_ = 0; batch_ = []; total_correct = 0
     for tree, label in java_test_data:
         if len(batch_) >= 50:
-            count_ += 1; num = validate(java_fold, batch_, java_model)
+            count_ += 1; java_fold = torchfold_Alt.Fold(); java_fold.volatile = True
+            num = validate(java_fold, batch_, java_model)
             total_correct += num
-            if count_ % 20 == 0:
-                print (' '.join(['Number of Correct Predictions from Batch:', str(count_), str(num)]))
-                print (time.localtime())
             batch_ = []
         batch_.append((tree, label))
     
     if len(batch_) > 0:
+        java_fold = torchfold_Alt.Fold(); java_fold.volatile = True
         num = validate(java_fold, batch_, java_model); total_correct += num
     
-    prev_accuracy = 50
     accuracy = total_correct/len(java_test_data)*100.0
-    print (''.join(['Epoch:', str(epoch), 'Final Accuracy: ', str(accuracy), '%']))
+    print (' '.join(['Epoch:', str(epoch), 'Final Accuracy:', str(accuracy), '%']))
     print (time.localtime())
     
     if accuracy > prev_accuracy:
-        torch.save(java_model.state_dict(), 'java_checkpoint.pth')
-    
-    prev_accuracy = accuracy
+        with open('indexed_trees_labeled_Java_Train_Alt.jsonl', 'w') as f:
+            for tree, label in java_train_data:
+                r = []; util.serialize(tree, r)
+                f.write(json.dumps({'hired': label, 'solution': r, 'language': 'Java'}) + '\n')
+        with open('indexed_trees_labeled_Java_Test_Alt.jsonl', 'w') as f:
+            for tree, label in java_test_data:
+                r = []; util.serialize(tree, r)
+                f.write(json.dumps({'hired': label, 'solution': r, 'language': 'Java'}) + '\n')
+        torch.save(java_model.state_dict(), 'java_checkpoint_Alt.pth')
+        prev_accuracy = accuracy
