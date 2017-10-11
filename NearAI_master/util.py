@@ -1,6 +1,8 @@
 import javalang_master.javalang
 import clang_38.clang.cindex
 
+#This is a utility program for processing the raw code input.
+
 idx2word_Cpp = [
 'CursorKind.UNEXPOSED_DECL',
 'CursorKind.STRUCT_DECL',
@@ -323,3 +325,55 @@ def serialize(tree, result):
     for child in tree.children:
         serialize(child, result)
     result.append(')')
+
+#This is the script for parsing all the codes, serializing the resulting trees,
+#and finally writing them down to files.
+with open('daniel_full_set.jsonl', 'r') as f:
+    with open('indexed_trees_labeled_Cpp.jsonl', 'w') as c, open('indexed_trees_labeled_Java.jsonl', 'w') as j:
+        line_count = 0
+        for line in f:
+            d = json.loads(line)
+            label = d['hired']
+            code_list = d['solutions']
+            Cpp_list = []; Java_list = []
+            for code in code_list:
+                count = 0
+                if len(code) < 25:
+                    continue
+                try:
+                    raw_tree = parse_tree_Java(code)
+                    indexed_tree = index_tree_Java(raw_tree, java_word2idx)
+                    language = 'Java'
+                except javalang_master.javalang.tokenizer.LexerError:
+                    code_stripped = ''
+                    for l in code.splitlines():
+                        #We exclude include and import statements because otherwise
+                        #The C++ parser will to parse ALL of the source code of each
+                        #package included or imported.
+                        if 'include' in l or 'import' in l:
+                            continue
+                        code_stripped = '\n'.join([code_stripped, l])
+                    code_stripped = code_stripped.strip()
+                    raw_tree = parse_tree_Cpp(code_stripped).cursor
+                    indexed_tree = index_tree_Cpp(raw_tree, Cpp_word2idx)
+                    language = 'C++'
+                    
+                #We'll only be analyzing Java or C++ codes. We skip codes
+                #written in other languages
+                except:
+                    continue
+                r = []; serialize(indexed_tree, r)
+                if len(r) >= 10:
+                    if language == 'Java':
+                        Java_list.append(r)
+                    elif language == 'C++':
+                        Cpp_list.append(r)
+            if len(Cpp_list) > 0:
+                c.write(json.dumps({'hired': label, 'solutions': Cpp_list}) + '\n')
+            if len(Java_list) > 0:
+                j.write(json.dumps({'hired': label, 'solutions': Java_list}) + '\n')
+            line_count += 1
+            if line_count % 500 == 0:
+                print (line_count)
+
+print ('Done writing data')
