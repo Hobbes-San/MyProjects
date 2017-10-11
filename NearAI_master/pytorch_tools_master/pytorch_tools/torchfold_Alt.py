@@ -2,6 +2,8 @@ import collections
 import torch
 from torch.autograd import Variable
 
+#This is a modified version of the original torchfold.py file for me to use in
+#my project. The functions that were changed are _batch_args and apply.
 class Fold(object):
 
     class Node(object):
@@ -58,9 +60,28 @@ class Fold(object):
             self.steps[step][op].append(args)
             self.cached_nodes[op][args] = node
         return self.cached_nodes[op][args]
-
+    
+    #This function has been modified from the original version.
     def _batch_args(self, dim, op, values, arg_list):
         if op == 'process_children':
+            
+            #In order to accomodate trees that are not binary, we use the concept
+            #of continuous binary trees.
+            #The weight for each child node is a linear combination of left weight
+            #and right weight.
+            #The closer the child is to the leftmost child, the greater the coefficient
+            #in front of the left weight.
+            #The closer the child is to the rightmost child, the greater the coefficient
+            #in front of the right weight.
+            
+            #In order to keep the code clean and efficient, instead of taking the
+            #linear combination of the left and right weights, I take the linear
+            #combination of the inputs from the children nodes going into left weight
+            #and call it left_h and left_c.
+            #Similarly, I take the linear combination of the inputs from the children
+            #nodes going into right weight and call it right_h and right_c.
+            
+            #Both ways are equivalent in the end.
             left_h = []; left_c = []; right_h = []; right_c = []; word_indices = []
             for arg in arg_list:
                 m = int((len(arg)-1)/2)
@@ -82,6 +103,8 @@ class Fold(object):
                     right_c.append(sum(rc))
                 else:
                     right_c.append(Variable(torch.cuda.FloatTensor(1, dim).zero_()))
+                    
+                #Add the index of the node's word at the end.
                 word_indices.append(arg[-1])
             res = [torch.cat(left_h, 0),
                    torch.cat(left_c, 0),
@@ -89,6 +112,9 @@ class Fold(object):
                    torch.cat(right_c, 0),
                    Variable(torch.cuda.LongTensor(word_indices))]
         elif op == 'logits':
+            
+            #This is the logits case, where we are trying to get the raw outputs
+            #for each tree in the batch.
             r = []
             for arg in arg_list:
                 if isinstance(arg, (list, tuple)):
@@ -97,18 +123,25 @@ class Fold(object):
                     r.append(arg.get(values))
             res = [torch.cat(r, 0)]
         else:
+            
+            #This is the leaf node case where we just return the word index
+            #as a variable.
             r = []
             for arg in arg_list:
                 r.append(arg[0])
             res = [Variable(torch.cuda.LongTensor(r))]
         return res
-
+    
+    #This function has been modified from the original version.
     def apply(self, model, nodes):
         """Apply current fold to given neural module."""
         values = {}; dim = model.size
         for step in sorted(self.steps.keys()):
             values[step] = {}
             for op in self.steps[step]:
+                
+                #If we're dealing with logits, don't split, eitherwise we need
+                #to split, one for hidden state and one for cell state.
                 if op == 'logits':
                     values[step][op] = []
                     split = False
@@ -116,6 +149,9 @@ class Fold(object):
                     values[step][op] = [[], []]
                     split = True
                 func = getattr(model, op)
+                
+                #Divide all the computations of type op at the current step
+                #into chunks of size 128.
                 for i in range(0, len(self.steps[step][op]), 128):
                     chunked_batch = self.steps[step][op][i:i+128]
                     try:
@@ -125,6 +161,9 @@ class Fold(object):
                             op, step, self.steps[step][op]))
                         raise
                     batch_res = func(*chunked_batched_args)
+                    
+                    #Save all of the results of type op at the current step to
+                    #the values dictionary.
                     if split:
                         for i in range(2):
                             values[step][op][i] += batch_res[i].split(1)
