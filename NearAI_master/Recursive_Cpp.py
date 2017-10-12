@@ -63,7 +63,7 @@ Cpp_model = util.RecursiveModel(159, 100); Cpp_model.cuda()
 if load_previous:
     print ('Loaded')
     Cpp_model.load_state_dict(torch.load('Cpp_checkpoint_Alt.pth'))
-Cpp_optimizer = optim.Adagrad(Cpp_model.parameters(), lr=0.01, weight_decay=0.001)
+Cpp_optimizer = optim.Adagrad(Cpp_model.parameters(), lr=0.001, weight_decay=0.001)
 
 epochs = 10; prev_accuracy = 50
 for epoch in range(epochs):
